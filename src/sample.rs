@@ -1,7 +1,7 @@
 use rand::{
     distributions::{Distribution, Uniform},
     seq::IteratorRandom,
-    Rng,
+    RngCore,
 };
 use rand_distr::StandardNormal;
 use std::collections::HashSet;
@@ -22,7 +22,7 @@ impl<const D: usize> NBallGen<D> {
     }
 
     /// Sample a point in the annulus.
-    fn sample<R: Rng>(&mut self, rng: &mut R) -> Coord<D> {
+    fn sample<R: RngCore + ?Sized>(&mut self, rng: &mut R) -> Coord<D> {
         let at_distance = self.distance.sample(rng);
 
         let mut coords: [f64; D] = sample_const_num_values(&StandardNormal, rng);
@@ -37,20 +37,24 @@ impl<const D: usize> NBallGen<D> {
     }
 
     /// Generate a coordinate in the annulus around a given point.
-    pub fn gen_around<R: Rng>(&mut self, x0: &Coord<D>, rng: &mut R) -> Coord<D> {
+    pub fn gen_around<R: RngCore + ?Sized>(&mut self, x0: &Coord<D>, rng: &mut R) -> Coord<D> {
         add_coords(x0, &self.sample(rng))
     }
 }
 
 /// Return a random index from the set, or `None` if it is empty.
-pub fn get_active_index<R: Rng>(inds: &HashSet<usize>, rng: &mut R) -> Option<usize> {
+pub fn get_active_index<R: RngCore + ?Sized>(inds: &HashSet<usize>, rng: &mut R) -> Option<usize> {
     inds.iter().choose(rng).cloned()
 }
 
 /// Generate a random point inside the box as an initial value for the Bridson algorithm.
-pub fn gen_init_coord<R: Rng, const D: usize>(box_size: &Coord<D>, rng: &mut R) -> Coord<D> {
+pub fn gen_init_coord<R: RngCore + ?Sized, const D: usize>(
+    box_size: &Coord<D>,
+    rng: &mut R,
+) -> Coord<D> {
     let mut xinit = [0.0; D];
 
+    use rand::Rng;
     xinit
         .iter_mut()
         .zip(box_size.iter())
@@ -60,7 +64,12 @@ pub fn gen_init_coord<R: Rng, const D: usize>(box_size: &Coord<D>, rng: &mut R) 
 }
 
 /// Sample N values from a distribution and return as an array.
-fn sample_const_num_values<T: Copy + Default, D: Distribution<T>, R: Rng, const N: usize>(
+fn sample_const_num_values<
+    T: Copy + Default,
+    D: Distribution<T>,
+    R: RngCore + ?Sized,
+    const N: usize,
+>(
     distr: &D,
     rng: &mut R,
 ) -> [T; N] {

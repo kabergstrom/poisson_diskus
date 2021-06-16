@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngCore;
 use std::collections::HashSet;
 
 use crate::{
@@ -9,6 +9,60 @@ use crate::{
 };
 
 // type Coord = Vec<f64>;
+
+pub struct BridsonIterator<'a, R: RngCore + ?Sized, const D: usize> {
+    grid: Grid<D>,
+    sphere_gen: NBallGen<D>,
+    grid_index: usize,
+
+    active_inds: HashSet<usize>,
+    samples: Vec<Coord<D>>,
+    position_buf: Vec<isize>,
+    rng: &'a mut R,
+    rmin: f64,
+    num_attempts: usize,
+    use_pbc: bool,
+}
+
+impl<'a, R: RngCore + ?Sized, const D: usize> Iterator for BridsonIterator<'a, R, D> {
+    type Item = Coord<D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(grid_index) = get_active_index(&self.active_inds, self.rng) {
+            let x0 = get_sample_from_grid(self.grid_index, &self.samples, &self.grid)?;
+
+            match get_sample_around(
+                &mut self.position_buf,
+                x0,
+                &self.samples,
+                &self.grid,
+                self.num_attempts,
+                self.rmin,
+                self.use_pbc,
+                &mut self.sphere_gen,
+                self.rng,
+            ) {
+                Some(coord) => {
+                    let sample_grid_index = self.grid.get_index_from_coord(&coord, self.use_pbc)?;
+
+                    add_sample_to_list_and_grid(
+                        coord,
+                        sample_grid_index,
+                        &mut self.samples,
+                        &mut self.active_inds,
+                        &mut self.grid,
+                    );
+                    return Some(coord);
+                }
+                None => {
+                    self.active_inds.remove(&grid_index);
+                }
+            }
+        }
+
+        None
+    }
+}
 
 /// Generate samples from a Poisson disc distribution within the given box.
 ///
@@ -34,10 +88,53 @@ pub fn bridson<const D: usize>(
     bridson_rng(box_size, rmin, num_attempts, use_pbc, &mut rng)
 }
 
+pub fn bridson_iter<'a, R: RngCore + ?Sized, const D: usize>(
+    box_size: &Coord<D>,
+    rmin: f64,
+    num_attempts: usize,
+    use_pbc: bool,
+    rng: &'a mut R,
+) -> Result<BridsonIterator<'a, R, D>, Error<D>> {
+    // Validate input numbers as positive and bounded
+    validate_rmin(rmin)?;
+    validate_box_size(box_size)?;
+
+    // if box_size.is_empty() {
+    //     return Ok(vec![]);
+    // }
+    let shape = get_grid_shape(rmin, box_size);
+    let mut grid: Grid<D> = Grid::new(&shape, box_size);
+    let sphere_gen = NBallGen::new(rmin);
+
+    let x0 = gen_init_coord(box_size, rng);
+    let grid_index = grid
+        .get_index_from_coord(&x0, use_pbc)
+        .ok_or(Error::GenCoordOutOfBounds(x0.clone()))?;
+
+    let mut active_inds = HashSet::new();
+    let mut samples: Vec<Coord<D>> = Vec::with_capacity(grid.data.len());
+    let position_buf: Vec<isize> = Vec::new();
+
+    add_sample_to_list_and_grid(x0, grid_index, &mut samples, &mut active_inds, &mut grid);
+    Ok(BridsonIterator {
+        grid,
+        sphere_gen,
+        grid_index,
+
+        active_inds,
+        samples,
+        position_buf,
+        rmin,
+        num_attempts,
+        use_pbc,
+        rng,
+    })
+}
+
 /// Generate samples from a Poisson disc distribution using a specific random number generator.
 ///
 /// See [`bridson`] for more information.
-pub fn bridson_rng<R: Rng, const D: usize>(
+pub fn bridson_rng<R: RngCore, const D: usize>(
     box_size: &Coord<D>,
     rmin: f64,
     num_attempts: usize,
@@ -132,7 +229,7 @@ fn get_sample_from_grid<'a, const D: usize>(
         .and_then(|sample_index| samples.get(sample_index))
 }
 
-fn get_sample_around<R: Rng, const D: usize>(
+fn get_sample_around<R: RngCore + ?Sized, const D: usize>(
     position_buf: &mut Vec<isize>,
     x0: &Coord<D>,
     samples: &[Coord<D>],

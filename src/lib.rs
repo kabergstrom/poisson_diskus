@@ -48,5 +48,5 @@ mod error;
 mod grid;
 mod sample;
 
-pub use bridson::{bridson, bridson_rng};
+pub use bridson::{bridson, bridson_iter, bridson_rng};
 pub use error::Error;
