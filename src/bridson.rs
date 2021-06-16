@@ -64,6 +64,7 @@ pub fn bridson_rng<R: Rng, const D: usize>(
 
     let mut active_inds = HashSet::new();
     let mut samples: Vec<Coord<D>> = Vec::with_capacity(grid.data.len());
+    let mut position_buf: Vec<isize> = Vec::new();
 
     add_sample_to_list_and_grid(x0, grid_index, &mut samples, &mut active_inds, &mut grid);
 
@@ -72,6 +73,7 @@ pub fn bridson_rng<R: Rng, const D: usize>(
             get_sample_from_grid(grid_index, &samples, &grid).ok_or(Error::InvalidActiveList)?;
 
         match get_sample_around(
+            &mut position_buf,
             x0,
             &samples,
             &grid,
@@ -131,6 +133,7 @@ fn get_sample_from_grid<'a, const D: usize>(
 }
 
 fn get_sample_around<R: Rng, const D: usize>(
+    position_buf: &mut Vec<isize>,
     x0: &Coord<D>,
     samples: &[Coord<D>],
     grid: &Grid<D>,
@@ -143,7 +146,7 @@ fn get_sample_around<R: Rng, const D: usize>(
     for _ in 0..num_attempts {
         let x1 = sphere_gen.gen_around(x0, rng);
 
-        if check_if_coord_is_valid(&x1, samples, grid, rmin, use_pbc) {
+        if check_if_coord_is_valid(position_buf, &x1, samples, grid, rmin, use_pbc) {
             return Some(x1);
         }
     }
@@ -152,6 +155,7 @@ fn get_sample_around<R: Rng, const D: usize>(
 }
 
 fn check_if_coord_is_valid<const D: usize>(
+    position_buf: &mut Vec<isize>,
     coord: &Coord<D>,
     samples: &[Coord<D>],
     grid: &Grid<D>,
@@ -160,20 +164,17 @@ fn check_if_coord_is_valid<const D: usize>(
 ) -> bool {
     match grid.get_position_from_coord(coord) {
         Some(position) => {
-            let index_ranges: Vec<(isize, isize)> = position
-                .iter()
-                .map(|&i| {
-                    (
-                        i - grid.num_adjacent as isize,
-                        i + grid.num_adjacent as isize,
-                    )
-                })
-                .collect();
+            let mut index_ranges: [(isize, isize); D] = [(0, 0); D];
+            for (idx, i) in position.iter().enumerate() {
+                index_ranges[idx] = (
+                    i - grid.num_adjacent as isize,
+                    i + grid.num_adjacent as isize,
+                );
+            }
 
-            let mut position_buf = Vec::with_capacity(position.len());
-
+            position_buf.clear();
             recurse_and_check(
-                &mut position_buf,
+                position_buf,
                 &index_ranges,
                 coord,
                 samples,
@@ -347,7 +348,15 @@ mod tests {
 
         let grid = Grid::new(&shape, &size);
 
-        assert!(check_if_coord_is_valid(&coord, &[], &grid, rmin, true))
+        let mut position_buf = Vec::new();
+        assert!(check_if_coord_is_valid(
+            &mut position_buf,
+            &coord,
+            &[],
+            &grid,
+            rmin,
+            true
+        ))
     }
 
     #[test]
@@ -363,7 +372,15 @@ mod tests {
 
         add_sample_at_grid_position(&[3, 3], &mut samples, &mut grid);
 
-        assert!(check_if_coord_is_valid(&coord, &samples, &grid, rmin, true))
+        let mut position_buf = Vec::new();
+        assert!(check_if_coord_is_valid(
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
+        ))
     }
 
     #[test]
@@ -386,8 +403,14 @@ mod tests {
         // Set the coordinate close enough to the candidate (cheating!)
         samples[0] = [1.0, 2.0];
 
+        let mut position_buf = Vec::new();
         assert!(!check_if_coord_is_valid(
-            &coord, &samples, &grid, rmin, true
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
         ))
     }
 
@@ -404,8 +427,14 @@ mod tests {
 
         add_sample_at_grid_position(&[2, 1], &mut samples, &mut grid);
 
+        let mut position_buf = Vec::new();
         assert!(!check_if_coord_is_valid(
-            &coord, &samples, &grid, rmin, true
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
         ))
     }
 
@@ -423,7 +452,15 @@ mod tests {
         add_sample_at_grid_position(&[2, 1], &mut samples, &mut grid);
         samples[0] = [5.99, 3.99]; // bin: 2, 1
 
-        assert!(check_if_coord_is_valid(&coord, &samples, &grid, rmin, true))
+        let mut position_buf = Vec::new();
+        assert!(check_if_coord_is_valid(
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
+        ))
     }
 
     #[test]
@@ -440,11 +477,24 @@ mod tests {
         add_sample_at_grid_position(&[1, 3], &mut samples, &mut grid);
 
         samples[0] = [3.0, 4.0]; // bin: 1, 3, but out of range
-        assert!(check_if_coord_is_valid(&coord, &samples, &grid, rmin, true));
+        let mut position_buf = Vec::new();
+        assert!(check_if_coord_is_valid(
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
+        ));
 
         samples[0] = [3.0, 8.0]; // bin: 1, 3, in range
         assert!(!check_if_coord_is_valid(
-            &coord, &samples, &grid, rmin, true
+            &mut position_buf,
+            &coord,
+            &samples,
+            &grid,
+            rmin,
+            true
         ));
     }
 

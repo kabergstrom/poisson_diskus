@@ -83,37 +83,38 @@ impl<const D: usize> Grid<D> {
         }
     }
 
-    pub fn get_position(&self, index: usize) -> Option<Vec<isize>> {
+    pub fn get_position(&self, index: usize) -> Option<[isize; D]> {
         if index < self.data.len() {
-            Some(
-                self.dim_multipliers
-                    .iter()
-                    .scan(index, |i, d| {
-                        let n = *i / d;
-                        *i = *i % d;
+            let mut arr: [isize; D] = [0; D];
+            let mut i = index;
+            for (idx, d) in self.dim_multipliers.iter().enumerate() {
+                let n = i / d;
+                i = i % d;
 
-                        Some(n as isize)
-                    })
-                    .collect(),
-            )
+                arr[idx] = n as isize;
+            }
+            Some(arr)
         } else {
             None
         }
     }
 
     /// Return the grid position of a coordinate.
-    pub fn get_position_from_coord(&self, coord: &[f64]) -> Option<Vec<isize>> {
-        coord
-            .iter()
-            .zip(self.spacing.iter())
-            .map(|(c, dx)| (c / dx).floor() as isize)
-            .zip(self.shape.iter().map(|n| *n as isize))
-            .map(|(i, n)| if i >= 0 && i < n { Some(i) } else { None })
-            .collect()
+    pub fn get_position_from_coord(&self, coord: &[f64; D]) -> Option<[isize; D]> {
+        let mut pos = [0isize; D];
+        for i in 0..D {
+            let c = (coord[i] / self.spacing[i]).floor() as isize;
+            let limit = self.shape[i] as isize;
+            if c < 0 || c >= limit {
+                return None;
+            }
+            pos[i] = c;
+        }
+        Some(pos)
     }
 
     /// Return the 1d data index of a coordinate on the grid.
-    pub fn get_index_from_coord(&self, coord: &[f64], use_pbc: bool) -> Option<usize> {
+    pub fn get_index_from_coord(&self, coord: &[f64; D], use_pbc: bool) -> Option<usize> {
         self.get_position_from_coord(coord)
             .and_then(|position| self.get_index(&position, use_pbc))
     }
@@ -317,10 +318,10 @@ mod tests {
         ] {
             // Try with and without pbc
             let index = grid.get_index(position, true).unwrap();
-            assert_eq!(grid.get_position(index).unwrap(), position);
+            assert_eq!(&grid.get_position(index).unwrap(), position);
 
             let index = grid.get_index(position, false).unwrap();
-            assert_eq!(grid.get_position(index).unwrap(), position);
+            assert_eq!(&grid.get_position(index).unwrap(), position);
         }
     }
 
@@ -349,12 +350,12 @@ mod tests {
 
         let grid = Grid::new(&shape, &size);
 
-        assert_eq!(grid.get_position_from_coord(&[0.0, 0.0]).unwrap(), &[0, 0]);
-        assert_eq!(grid.get_position_from_coord(&[4.9, 2.4]).unwrap(), &[0, 0]);
-        assert_eq!(grid.get_position_from_coord(&[5.1, 2.4]).unwrap(), &[1, 0]);
-        assert_eq!(grid.get_position_from_coord(&[5.1, 2.6]).unwrap(), &[1, 1]);
-        assert_eq!(grid.get_position_from_coord(&[7.5, 5.1]).unwrap(), &[1, 2]);
-        assert_eq!(grid.get_position_from_coord(&[7.5, 7.6]).unwrap(), &[1, 3]);
+        assert_eq!(&grid.get_position_from_coord(&[0.0, 0.0]).unwrap(), &[0, 0]);
+        assert_eq!(&grid.get_position_from_coord(&[4.9, 2.4]).unwrap(), &[0, 0]);
+        assert_eq!(&grid.get_position_from_coord(&[5.1, 2.4]).unwrap(), &[1, 0]);
+        assert_eq!(&grid.get_position_from_coord(&[5.1, 2.6]).unwrap(), &[1, 1]);
+        assert_eq!(&grid.get_position_from_coord(&[7.5, 5.1]).unwrap(), &[1, 2]);
+        assert_eq!(&grid.get_position_from_coord(&[7.5, 7.6]).unwrap(), &[1, 3]);
     }
 
     #[test]
