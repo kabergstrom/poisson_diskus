@@ -161,7 +161,7 @@ pub fn bridson_rng<R: RngCore, const D: usize>(
 
     let mut active_inds = HashSet::new();
     let mut samples: Vec<Coord<D>> = Vec::with_capacity(grid.data.len());
-    let mut position_buf: Vec<isize> = Vec::new();
+    let mut position_buf: Vec<isize> = Vec::with_capacity(grid.data.len());
 
     add_sample_to_list_and_grid(x0, grid_index, &mut samples, &mut active_inds, &mut grid);
 
